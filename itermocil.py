@@ -20,7 +20,7 @@ class Itermocil(object):
         Applescript based upon that.
     """
 
-    def __init__(self, teamocil_file, here=False, cwd=None):
+    def __init__(self, teamocil_file, here=False, cwd=None, hostfile=None):
         """ Establish iTerm version, and initialise the list which
             will contain all the Applescript commands to execute.
         """
@@ -47,6 +47,7 @@ class Itermocil(object):
         self.file = teamocil_file
         self.here = here
         self.cwd = cwd
+        self.hostfile = hostfile
 
         # Open up the file and parse it with PyYaml
         with open(self.file, 'r') as f:
@@ -73,6 +74,12 @@ class Itermocil(object):
                 self.applescript.append('tell i term application "System Events" ' +
                                         'to keystroke "t" using command down')
                 self.applescript.append('delay 0.3')
+
+        # Add host file processing
+        if self.hostfile:
+            # Parse and add hostfile information to self.parsed_config
+            self.hosts = self.parse_hostfile(self.hostfile)
+            self.add_hosts(self.hosts)
 
         # Process the file, building the script.
         self.process_file()
@@ -600,6 +607,59 @@ class Itermocil(object):
                     commands = window['commands']
                 self.initiate_window(commands)
 
+    def parse_hostfile(self, hostfile):
+        '''
+        Assumes file has lines of the following format: <abstract-name> <resource-name> <IP> <extras>
+
+        :param hostfile: File with hosts information
+        :return: dictionary of host information
+        '''
+        _hosts = {}
+        with open(hostfile) as f:
+            for line in f.readlines():
+                parts = line.split()
+                _hosts[parts[0]] = parts[2]
+        print _hosts
+
+        return _hosts
+
+    def add_hosts(self, hosts):
+        """
+        Blend the hosts file information into the parsed yaml config.  Looks for a window called "jcl-ssh" and places
+        the pane information about hosts there.
+        :param hosts: dictionary of host information
+        :return:
+        """
+        for num, window in enumerate(self.parsed_config['windows']):
+            jcl_window_index = None
+            if num >= 0:
+                print window
+                # Find index of the list item associate with the 'jcl-ssh' window
+                if window['name'] == "jcl-ssh":
+                    jcl_window_index = num
+            else:
+                print num
+                print window['name']
+                print "else"
+                pass
+
+            if jcl_window_index == None:
+                print "ERROR: no 'jcl-ssh' labeled window found in layout yaml file"
+                sys.exit(1)
+            self.parsed_config['windows'][jcl_window_index]['panes'] = []
+
+            for num, host in enumerate(hosts):
+                ip = hosts[host]
+                this_pane = {}
+                this_pane['commands'] = ["""sshpass -p 'Juniper!1' ssh -o StrictHostKeyChecking=no root@{}""".format(ip)]
+                this_pane['name'] = host
+                # Focus on first pane
+                if num == 0:
+                    this_pane['focus'] = None
+
+                # Add pane to 'jcl-ssh' window
+                self.parsed_config['windows'][jcl_window_index]['panes'].append(this_pane)
+
 
 def main():
 
@@ -619,6 +679,7 @@ def main():
                         help="run in the current terminal",
                         action="store_true",
                         default=False)
+
 
     parser.add_argument("--edit",
                         help="edit file in $EDITOR if set, otherwise open in GUI",
@@ -650,7 +711,13 @@ def main():
                         action="store_true",
                         default=None)
 
+    # Custom flags
+    parser.add_argument("--ssh",
+                        help="file of hosts with which to connect via SSH")
+
     args = parser.parse_args()
+
+    print args
 
     # itermocil files live in a hidden directory in the home directory
     # either in an .itermocil directory or a .teamocil directory
@@ -687,6 +754,7 @@ def main():
     # Build teamocil file path based on presence of --layout flag.
     if args.layout:
         filepath = os.path.join(os.getcwd(), layout)
+        print filepath
     else:
         if not os.path.isdir(itermocil_dir):
             if not os.path.isdir(teamocil_dir):
@@ -724,9 +792,18 @@ def main():
             print fin.read()
             sys.exit(0)
 
+    hostfile = None
+    # Check for SSH hosts file
+    if args.ssh:
+        hf = args.ssh
+        hostfile = os.path.join(itermocil_dir, hf)
+        if not os.path.isfile(hostfile):
+            print "ERROR: there is no file '{}' found in {}".format(hf, itermocil_dir)
+            sys.exit(1)
+
     # Parse the teamocil file and execute it.
     cwd = os.getcwd()
-    instance = Itermocil(filepath, here=args.here, cwd=cwd)
+    instance = Itermocil(filepath, here=args.here, cwd=cwd, hostfile=hostfile)
 
     # If --debug then output the applescript. Do some rough'n'ready
     # formatting on it.

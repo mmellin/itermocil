@@ -6,6 +6,12 @@ iTermocil supports iTerm 2.x and the new 3.x (including later betas). It works b
 
 ![Example](https://raw.githubusercontent.com/TomAnthony/itermocil/master/itermocil.gif)
 
+## Pre-requistes
+
+If you are using the SSH to JCL hosts feature, you will need to install
+[sshpass](https://gist.github.com/arunoda/7790979). _Note_: this will show
+the JCL host password in the user's history.
+
 ## Installing iTermocil
 
 ```bash
