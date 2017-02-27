@@ -616,7 +616,9 @@ class Itermocil(object):
         '''
         _hosts = {}
         with open(hostfile) as f:
-            for line in f.readlines():
+            lines = (line.rstrip() for line in f)
+            lines = (line for line in lines if line)
+            for line in lines:
                 parts = line.split()
                 _hosts[parts[0]] = parts[2]
         print _hosts
